@@ -8,6 +8,7 @@ import bbknn
 import pandas as pd
 import glob
 import os
+import infercnvpy as cnv
 
 ### load in h5ad objects
 OAC_pt = sc.read("/home/itrg/University/RPC/sc_data/OAC_pt.h5ad")
@@ -74,6 +75,23 @@ sc.pl.umap(
 # Using the igraph implementation and a fixed number of iterations can be significantly faster, especially for larger datasets
 sc.tl.leiden(OAC_pt, resolution=res)
 sc.pl.umap(OAC_pt, color=["leiden"], size=20) # change colour with palette parameter
+
+## adding sample name to cluster
+
+# Create new 'patient' column with default value (e.g. NaN or 'unknown')
+OAC_pt.obs['patient'] = 'OAC26'  # or np.nan if you want it empty
+
+# Assign 'OAC35' to cells with sample 'OAC35_TJ' or 'OAC35_TL'
+OAC_pt.obs.loc[
+    OAC_pt.obs['sample'].isin(['OAC35TJ', 'OAC35TL']),
+    'patient'
+] = 'OAC35'
+
+sc.pl.umap(OAC_pt, color=["patient"], size=20) # change colour with palette parameter
+
+# debug
+print(OAC_pt.obs['sample'].unique().tolist())
+
 
 # set marker genes 
 # cell types: Cancer cells, B cell, NK cell, T cell, monocyte, dendritic cell, lymphoid cell, macrophage, mast cell, non immune cell, adipocyte, fibroblast, pericyte, smooth muscle cell, 
@@ -150,55 +168,71 @@ sc.pl.rank_genes_groups_dotplot(
     OAC_pt, groupby="leiden", standard_scale="var", n_genes=10, key="dea_leiden"
 )
 
-### subset and recluster the stromal cells 
-# Create a Boolean mask for stromal clusters
-fibroblast_mask = OAC_pt.obs['leiden'].isin(['8'])
+########## InferCNV
+## parse GTF
+gtf_file = "/home/itrg/University/RPC/sc_data/gencode.v48.annotation.gtf"# Path to your GTF file
+gtf = pd.read_csv(
+    gtf_file,
+    sep='\t',
+    comment='#',
+    header=None,
+    names=["seqname", "source", "feature", "start", "end", "score", "strand", "frame", "attribute"]
+)# Read GTF file, skipping comment lines
+genes = gtf[gtf["feature"] == "gene"]# Filter for gene entries
+# Extract gene_name from the 'attribute' column using string matching
+def get_gene_name(attr):
+    for item in attr.split(";"):
+        item = item.strip()
+        if item.startswith("gene_name"):
+            return item.split('"')[1]  # get the value inside quotes
+genes["gene_name"] = genes["attribute"].apply(get_gene_name)
+# Build final DataFrame
+gene_pos = genes[["gene_name", "seqname", "start", "end"]].copy()
+gene_pos = gene_pos.rename(columns={"seqname": "chromosome"})
+#gene_pos["chromosome"] = gene_pos["chromosome"].str.replace("^chr", "", regex=True)# Optional: remove "chr" prefix to match your adata.var
+gene_pos = gene_pos.drop_duplicates(subset="gene_name")# Drop any duplicates
 
-# Use the mask to subset the AnnData object (this is key!)
-fibroblast = OAC_pt[fibroblast_mask].copy()
+## merge with cancer.var
+OAC_pt.var = OAC_pt.var.reset_index().rename(columns={"GENE": "gene_name"})  # 
+OAC_pt.var = OAC_pt.var.merge(gene_pos, on="gene_name", how="left")# Merge
+OAC_pt.var = OAC_pt.var.set_index("gene_name")# Set index back to gene names
 
-# Now you can run Scanpy functions on this new AnnData object
-sc.pp.neighbors(fibroblast)
-sc.tl.leiden(fibroblast, resolution=0.5)
-sc.tl.umap(fibroblast, min_dist=0.2)
-sc.pl.umap(fibroblast, color=['leiden'], size= 500)
+## check
+print(OAC_pt.var[['chromosome', 'start', 'end']].head())
 
-### Stromal Subset cell annotation 
-fibroblast_marker_genes = {"Cancer Associated Fibroblast": ["FAP", "ACTA2", "PDPN"],
-"Fibroblast": ["COL1A1", "DCN", "PDGFRA"], "Fibroblast reticular cell": ["PDPN", "CCL21"]}
+# Step 1: Get full gene annotation from raw.var
+raw_var = OAC_pt.raw.var.reset_index().rename(columns={"GENE": "gene_name"})
 
-# dot plot 
-sc.pl.dotplot(
-    fibroblast,
-    groupby="leiden",
-    var_names=fibroblast_marker_genes,
-    standard_scale="var",  # standard scale: normalize each gene to range from 0 to 1
-    use_raw=True
+# Step 2: Merge genomic coordinates with full gene list
+raw_var = raw_var.merge(gene_pos, on="gene_name", how="left").set_index("gene_name")
+
+# Step 3: Build new AnnData object with correct dimensions and annotations
+raw_adata = sc.AnnData(
+    X=OAC_pt.raw.X.copy(),
+    obs=OAC_pt.obs.copy(),
+    var=raw_var
 )
 
-# umap plots
-stromal_marker_genes_II = ["FAP", "PECAM1", "COL1A1", "PDGFRB", "ACTA2", "PDPN"]
-sc.pl.umap(fibroblast, color=stromal_marker_genes_II, use_raw=True)
 
-# Differentially expressed genes in each cluster 
-sc.tl.rank_genes_groups(
-    fibroblast, groupby="leiden", method="wilcoxon", key_added="dea_leiden"
+cnv.tl.infercnv(
+    raw_adata,
+    reference_key="cell_type",
+    reference_cat=[
+        "Cancer cells",
+        'T cells', 
+        'B cells', 
+        'Endothelial cells', 
+        'Plasma cells',
+        'Mast cells'
+    ],
+    window_size=250,
 )
-# Get the result dictionary
-result = fibroblast.uns['dea_leiden']
 
-# 'names' contains the ranked gene names per cluster
-groups = result['names'].dtype.names  # cluster names
+cnv.pl.chromosome_heatmap(raw_adata, groupby="cell_type")
 
-for group in groups:
-    print(f"Top 10 DE genes for cluster {group}:")
-    top_genes = result['names'][group][:10]
-    print(top_genes)
-    print("\n")
-sc.tl.dendrogram(fibroblast, groupby='leiden')
-sc.pl.rank_genes_groups_dotplot(
-    fibroblast, groupby="leiden", standard_scale="var", n_genes=10, key="dea_leiden"
-)
+
+
+####################################################################################################
 
 ### subset and recluster the cancer cells 
 # Create a Boolean mask for cancer clusters
@@ -212,6 +246,9 @@ sc.pp.neighbors(cancer)
 sc.tl.leiden(cancer, resolution=0.5)
 sc.tl.umap(cancer, min_dist=0.2)
 sc.pl.umap(cancer, color=['leiden'])
+sc.pl.umap(cancer, color=['sample'])
+sc.pl.umap(cancer, color=['patient'])
+
 
 ### Cancer Subset cell annotation 
 EMT_marker_genes = {"Epithelial cell": ["EPCAM", "CDH1"], "EMT TF": ["SNAI1", "SNAI2", "ZEB1", "ZEB2", "TWIST1", "TWIST2"], "Mesenchymal cell": ["VIM", "FN1", "CDH2", "MMP1", "SMN1", ], "EMT-Inducing factors": ["TGFB1", "EGF", "CTNNB1", "NOTCH1", "MYC"] }

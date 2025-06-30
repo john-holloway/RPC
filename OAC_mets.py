@@ -100,6 +100,8 @@ sc.pl.umap(
     size=20,
 )
 
+
+
 ### clustering
 # Leiden graph-clustering method
 # Using the igraph implementation and a fixed number of iterations can be significantly faster, especially for larger datasets
@@ -147,7 +149,7 @@ cluster_to_celltype = {
     '7': 'Myeloid cells',
     '8': 'Stromal cells',
     '9': 'T cells',
-    '10': 'Endotheial cells',
+    '10': 'Endothelial cells',
     '11': 'Plasma cells',
     '12': 'Cancer cells',
     '13': 'Mast cells'
@@ -180,7 +182,7 @@ for group in groups:
 sc.pl.rank_genes_groups_dotplot(
     OAC_met, groupby="leiden", standard_scale="var", n_genes=10, key="dea_leiden"
 )
-
+########## InferCNV
 ## parse GTF
 gtf_file = "/home/itrg/University/RPC/sc_data/gencode.v48.annotation.gtf"# Path to your GTF file
 gtf = pd.read_csv(
@@ -205,16 +207,29 @@ gene_pos = gene_pos.rename(columns={"seqname": "chromosome"})
 gene_pos = gene_pos.drop_duplicates(subset="gene_name")# Drop any duplicates
 
 ## merge with cancer.var
-OAC_met.var = OAC_met.var.reset_index().rename(columns={"index": "gene_name"})  # 
+OAC_met.var = OAC_met.var.reset_index().rename(columns={"GENE": "gene_name"})  # 
 OAC_met.var = OAC_met.var.merge(gene_pos, on="gene_name", how="left")# Merge
 OAC_met.var = OAC_met.var.set_index("gene_name")# Set index back to gene names
 
 ## check
 print(OAC_met.var[['chromosome', 'start', 'end']].head())
 
+# Step 1: Get full gene annotation from raw.var
+raw_var = OAC_met.raw.var.reset_index().rename(columns={"GENE": "gene_name"})
+
+# Step 2: Merge genomic coordinates with full gene list
+raw_var = raw_var.merge(gene_pos, on="gene_name", how="left").set_index("gene_name")
+
+# Step 3: Build new AnnData object with correct dimensions and annotations
+raw_adata = sc.AnnData(
+    X=OAC_met.raw.X.copy(),
+    obs=OAC_met.obs.copy(),
+    var=raw_var
+)
+
 
 cnv.tl.infercnv(
-    OAC_met.raw,
+    raw_adata,
     reference_key="cell_type",
     reference_cat=[
         "Cancer cells",
@@ -228,10 +243,11 @@ cnv.tl.infercnv(
     window_size=250,
 )
 
-cnv.pl.chromosome_heatmap(OAC_met, groupby="cell_type")
+cnv.pl.chromosome_heatmap(raw_adata, groupby="cell_type")
 
 print(OAC_met.var.columns)  # After reset_index and rename
 print(gene_pos.columns)     # The GTF-derived gene position DataFrame
+print(OAC_met.var.reset_index().columns)
 
 
 ###############################################################################################################################
@@ -403,7 +419,7 @@ cnv.tl.infercnv(
 
 cnv.pl.chromosome_heatmap(cancer, groupby="cell_type")
 
-hoo
+
 ###############################################################################################################################
 
 
