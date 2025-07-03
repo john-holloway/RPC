@@ -236,7 +236,7 @@ cnv.tl.infercnv(
         'T cells', 
         'B cells', 
         'Stromal cells',
-        'Endotheial cells', 
+        'Endothelial cells', 
         'Plasma cells',
         'Mast cells'
     ],
@@ -283,7 +283,7 @@ cancer_marker_genes_II = ["EPCAM", "CDH1", "SNAI1", "SNAI2", "ZEB1", "ZEB2", "TW
 sc.pl.umap(cancer, color=cancer_marker_genes_II, use_raw=True)
 cancer_activity_markers = ["MKI67", "MCM2", "PCNA"]
 sc.pl.umap(cancer, color=cancer_activity_markers, use_raw=True)
-
+sc.pl.umap(cancer, color=["EPCAM", "CDH1"], use_raw=True)
 
 cluster_to_celltype_cancer = {
     '0': 'Mesenchymal cells',
@@ -406,18 +406,36 @@ cancer.var = cancer.var.set_index("gene_name")# Set index back to gene names
 ## check
 print(cancer.var[['chromosome', 'start', 'end']].head())
 
+# Step 1: Get full gene annotation from raw.var
+raw_var = cancer.raw.var.reset_index().rename(columns={"GENE": "gene_name"})
+
+# Step 2: Merge genomic coordinates with full gene list
+raw_var = raw_var.merge(gene_pos, on="gene_name", how="left").set_index("gene_name")
+
+# Step 3: Build new AnnData object with correct dimensions and annotations
+raw_adata = sc.AnnData(
+    X=cancer.raw.X.copy(),
+    obs=cancer.obs.copy(),
+    var=raw_var)
+
+
+# make treatment column
+cancer.obs["treatment"] = cancer.obs["sample"].map({
+    "OAC26_M": "Naive",
+    "OAC35_M": "CRT"
+})
 
 cnv.tl.infercnv(
-    cancer,
-    reference_key="cell_type",
+    raw_adata,
+    reference_key="treatment",
     reference_cat=[
-        "Epithelial cells",
-        "Mesenchymal cells",
+        "Naive",
+        "CRT",
     ],
     window_size=250,
 )
 
-cnv.pl.chromosome_heatmap(cancer, groupby="cell_type")
+cnv.pl.chromosome_heatmap(cancer, groupby="treatment")
 
 
 ###############################################################################################################################
