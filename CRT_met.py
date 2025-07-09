@@ -12,6 +12,10 @@ from cellphonedb.src.core.methods import cpdb_statistical_analysis_method
 import matplotlib.pyplot as plt
 import seaborn as sns
 import infercnvpy as cnv
+import ktplotspy as kpy
+from pathlib import Path
+
+
 
 
 ### load in h5ad objects
@@ -156,6 +160,21 @@ plt.title("Cell type proportion by treatment")
 plt.tight_layout()
 plt.show()
 print(OAC_met.obs["treatment"].value_counts())
+
+### stacked barplot 
+# run all together at once
+proportions.plot(
+    kind="bar",
+    stacked=True,
+    figsize=(8, 6),
+    colormap="tab20"  # or use your preferred colormap
+)
+plt.ylabel("Proportion")
+plt.xlabel("Treatment")
+plt.title("Stacked Cell Type Proportions by Treatment")
+plt.legend(title="Cell Type", bbox_to_anchor=(1.05, 1), loc='upper left')
+plt.tight_layout()
+plt.show()
 ##################################################################################################################################
 ####################################### Now look at TME for each treatment arm ##################################
 
@@ -249,23 +268,166 @@ cpdb_results = cpdb_statistical_analysis_method.call(
     output_path = out_file_path                      # Output folder path (e.g. "./cpdb_out/")
 )
 
+##################################################################################################################################
+####################################### Making cellphonedb plots ##################################
+
+##### read in data from cellphone db output 
+
+DATADIR = Path("/home/itrg/University/RPC/sc_analysis/Update/Aim 2/")
+
+### CRT 
+
+#  output from CellPhoneDB
+means_crt = pd.read_csv(DATADIR / "CRT_out" / "statistical_analysis_means_07_03_2025_155001.txt", sep="\t")
+pvals_crt = pd.read_csv(DATADIR / "CRT_out" / "statistical_analysis_pvalues_07_03_2025_155001.txt", sep="\t")
+decon_crt = pd.read_csv(DATADIR / "CRT_out" / "statistical_analysis_deconvoluted_07_03_2025_155001.txt", sep="\t")
+
+### NAIVE 
+
+#  output from CellPhoneDB
+means_naive = pd.read_csv(DATADIR / "naive_out" / "statistical_analysis_means_07_03_2025_154806.txt", sep="\t")
+pvals_naive = pd.read_csv(DATADIR / "naive_out" / "statistical_analysis_pvalues_07_03_2025_154806.txt", sep="\t")
+decon_naive = pd.read_csv(DATADIR / "naive_out" / "statistical_analysis_deconvoluted_07_03_2025_154806.txt", sep="\t")
 
 
+### heat maps 
+# crt
+kpy.plot_cpdb_heatmap(pvals=pvals_crt, figsize=(5, 5), title="Sum of significant interactions CRT")
+# naive
+kpy.plot_cpdb_heatmap(pvals=pvals_naive, figsize=(5, 5), title="Sum of significant interactions naive")
+# subset like this if required
+# kpy.plot_cpdb_heatmap(pvals=pvals, cell_types=["NK cell", "pDC", "B cell", "CD8T cell"], figsize=(4, 4), title="Sum of significant interactions")
+
+### dot plot 
+# cell type 1 send signal and cell type 2 recieves signal
+# could do tumour cells to all others 
+# genes can be changed to whatever 
+# gene family can be specified (genefamily = "chemokines")
+kpy.plot_cpdb(
+    adata=CRT,
+    cell_type1="Cancer cells",
+    cell_type2=".",  # this means all cell-types
+    means=means_crt,
+    pvals=pvals_crt,
+    celltype_key="cell_type",
+    figsize=(13, 4),
+    title="interacting interactions!",
+)
+
+kpy.plot_cpdb(
+    adata=naive,
+    cell_type1="Cancer cells",
+    cell_type2=".",  # this means all cell-types
+    means=means_naive,
+    pvals=pvals_naive,
+    celltype_key="cell_type",
+    figsize=(13, 4),
+    title="interacting interactions!",
+)
+
+kpy.plot_cpdb_chord(
+    adata=CRT,
+    cell_type1="Cancer cells",
+    cell_type2=".",
+    means=means_crt,
+    pvals=pvals_crt,
+    deconvoluted=decon_crt,
+    celltype_key="cell_type",
+    link_kwargs={"direction": 1, "allow_twist": True, "r1": 95, "r2": 90},
+    sector_text_kwargs={"color": "black", "size": 12, "r": 105, "adjust_rotation": True},
+    legend_kwargs={"loc": "center", "bbox_to_anchor": (1, 1), "fontsize": 8},
+    link_offset=1,
+)
+
+kpy.plot_cpdb_chord(
+    adata=naive,
+    cell_type1="Cancer cells",
+    cell_type2=".",
+    means=means_naive,
+    pvals=pvals_naive,
+    deconvoluted=decon_crt,
+    celltype_key="cell_type",
+    link_kwargs={"direction": 1, "allow_twist": True, "r1": 95, "r2": 90},
+    sector_text_kwargs={"color": "black", "size": 12, "r": 105, "adjust_rotation": True},
+    legend_kwargs={"loc": "center", "bbox_to_anchor": (1, 1), "fontsize": 8},
+    link_offset=1,
+)
+
+##################################################################################################################################
+####################################### Correlation plots ########################################################################
 
 
+### make corr plot 
+# make new anndata objects
+CRT_corr = CRT.copy()
+# subset to top 500 genes 
+sc.pp.highly_variable_genes(CRT_corr, n_top_genes=hvgs, batch_key="sample")
+# Extract expression matrix (cells x genes)
+expr = CRT_corr.X.T  # transpose to genes x cells
+
+# Compute Spearman correlation (genes x genes)
+corr, _ = spearmanr(expr, axis=1)
+corr_df = pd.DataFrame(corr, index=CRT_corr.var_names, columns=CRT_corr.var_names)
+
+# Compute linkage
+linkage = sch.linkage(1 - corr_df, method='average')  # 1 - corr to convert to distance
+# Cut dendrogram to get clusters — you can choose number of clusters (e.g. 10)
+clusters = sch.fcluster(linkage, t=10, criterion='maxclust')
+# Map gene to cluster
+gene_clusters = pd.Series(clusters, index=corr_df.index)
+
+# Assuming corr_df is your gene-gene correlation DataFrame
+sns.clustermap(
+    corr_df,
+    row_linkage=linkage,
+    col_linkage=linkage,
+    cmap='vlag',
+    xticklabels=False,
+    yticklabels=False,
+    figsize=(10, 10)
+)
+plt.show()
 
 
+###############
 
+# Transpose expression to get genes x cells
+expr = CRT_corr.X.T
+genes = CRT_corr.var_names
 
+# Ensure dense matrix
+if hasattr(expr, "toarray"):
+    expr = expr.toarray()
 
+# Remove genes with zero variance
+gene_var = np.var(expr, axis=1)
+nonzero_idx = gene_var > 0
+expr = expr[nonzero_idx]
+genes = genes[nonzero_idx]
 
+# Compute Spearman correlation (genes x genes)
+corr_matrix, _ = spearmanr(expr, axis=1)
+corr_df = pd.DataFrame(corr_matrix, index=genes, columns=genes)
 
+# Convert to distance matrix
+dist_matrix = 1 - corr_df
 
+# Remove NaNs (caused by undefined Spearman values)
+mask = ~np.isnan(dist_matrix).any(axis=0)
+dist_matrix = dist_matrix.loc[mask, mask]
 
+# Symmetrize and convert to condensed format
+dist_matrix = (dist_matrix + dist_matrix.T) / 2
+condensed = squareform(dist_matrix.values)
 
+# Hierarchical clustering
+link = linkage(condensed, method="average")
 
+# Cut dendrogram into clusters
+clusters = fcluster(link, t=10, criterion='maxclust')
 
-
+# Map genes to clusters
+gene_clusters = pd.Series(clusters, index=dist_matrix.index)
 
 
 

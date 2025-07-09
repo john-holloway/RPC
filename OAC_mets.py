@@ -12,6 +12,9 @@ from cellphonedb.src.core.methods import cpdb_statistical_analysis_method
 import matplotlib.pyplot as plt
 import seaborn as sns
 import infercnvpy as cnv
+import gseapy as gp
+from scipy.stats import spearmanr
+import scipy.cluster.hierarchy as sch
 
 
 ### load in h5ad objects
@@ -249,6 +252,32 @@ print(OAC_met.var.columns)  # After reset_index and rename
 print(gene_pos.columns)     # The GTF-derived gene position DataFrame
 print(OAC_met.var.reset_index().columns)
 
+### make corr plot 
+# Extract expression matrix (cells x genes)
+expr = OAC_met.X.T  # transpose to genes x cells
+
+# Compute Spearman correlation (genes x genes)
+corr, _ = spearmanr(expr, axis=1)
+corr_df = pd.DataFrame(corr, index=OAC_met.var_names, columns=OAC_met.var_names)
+
+# Compute linkage
+linkage = sch.linkage(1 - corr_df, method='average')  # 1 - corr to convert to distance
+# Cut dendrogram to get clusters — you can choose number of clusters (e.g. 10)
+clusters = sch.fcluster(linkage, t=10, criterion='maxclust')
+# Map gene to cluster
+gene_clusters = pd.Series(clusters, index=corr_df.index)
+
+# Assuming corr_df is your gene-gene correlation DataFrame
+sns.clustermap(
+    corr_df,
+    method='average',        # linkage method
+    metric='correlation',    # distance metric
+    cmap='vlag',             # diverging colormap for correlations
+    figsize=(10, 10),
+    yticklabels=False,
+    xticklabels=False
+)
+plt.show()
 
 ###############################################################################################################################
 
@@ -286,13 +315,13 @@ sc.pl.umap(cancer, color=cancer_activity_markers, use_raw=True)
 sc.pl.umap(cancer, color=["EPCAM", "CDH1"], use_raw=True)
 
 cluster_to_celltype_cancer = {
-    '0': 'Mesenchymal cells',
-    '1': 'Epithelial cells',
-    '2': 'Mesenchymal cells',
-    '3': 'Mesenchymal cells',
-    '4': 'Epithelial cells',
-    '5': 'Mesenchymal cells',
-    '6': 'Epithelial cells'
+    '0': 'CRT cells',
+    '1': 'Naive cells',
+    '2': 'CRT cells',
+    '3': 'CRT cells',
+    '4': 'Naive cells',
+    '5': 'CRT cells',
+    '6': 'Naive cells'
 }
 
 # Create the new column
@@ -326,20 +355,22 @@ sc.pl.rank_genes_groups_dotplot(
 sc.tl.rank_genes_groups(
     cancer,
     groupby='cell_type',  # <-- your custom column
-    groups=['Mesenchymal cells'],
-    reference='Epithelial cells',
+    groups=['CRT cells'],
+    reference='Naive cells',
     method='wilcoxon'
 )
 
-df = sc.get.rank_genes_groups_df(cancer, group='Mesenchymal cells')
+df = sc.get.rank_genes_groups_df(cancer, group='CRT cells')
 # Save to CSV
-df.to_csv('/home/itrg/University/RPC/sc_analysis/OAC_mets/dge_mesenchymal_vs_epithelial.csv', index=False)
+df.to_csv('/home/itrg/University/RPC/sc_analysis/OAC_mets/dge_CRT_vs_naive.csv', index=False)
 
-# Filter before taking top 50
-filtered = df[(df['pvals_adj'] < 0.05) & (df['logfoldchanges'].abs() > 1)].head(50)
+# Filter for upregulated genes
+up_genes_df = df[(df['logfoldchanges'] > 1) & (df['pvals_adj'] < 0.05)]
+up_genes = up_genes_df['names'].tolist()
 
-print(filtered)
-
+# Filter for downregulated genes
+down_genes_df = df[(df['logfoldchanges'] < -1) & (df['pvals_adj'] < 0.05)]
+down_genes = down_genes_df['names'].tolist()
 
 ### volcano plot
 # Get DE results for CD4_T vs CD8_T
@@ -370,6 +401,19 @@ plt.axvline(1, color='black', linestyle='--', linewidth=1)
 
 plt.tight_layout()
 plt.show()
+
+### kegg plot 
+
+# Run KEGG enrichment analysis
+enr = gp.enrichr(
+    gene_list=down_genes,
+    gene_sets='ChEA_2022',
+    organism='Human',  # or 'Mouse'
+    outdir='KEGG_results',  # folder to save results
+    cutoff=0.05  # p-value threshold
+)
+# Barplot
+gp.barplot(enr.res2d, title='KEGG Pathway Enrichment', cutoff=0.05, figsize=(6, 6))
 
 ### inferCNV on the cancer group
 # We provide all immune cell types as "normal cells".
@@ -489,7 +533,7 @@ cpdb_results = cpdb_statistical_analysis_method.call(
 
 
 
-
+OAC_met.write("/home/itrg/University/RPC/sc_data/OAC_mets_mod.h5ad")
 
 
 

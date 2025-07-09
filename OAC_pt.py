@@ -213,7 +213,6 @@ raw_adata = sc.AnnData(
     var=raw_var
 )
 
-
 cnv.tl.infercnv(
     raw_adata,
     reference_key="cell_type",
@@ -287,13 +286,117 @@ sc.pl.rank_genes_groups_dotplot(
 )
 
 
+## merge with cancer.var
+cancer.var = cancer.var.reset_index().rename(columns={"GENE": "gene_name"})  # 
+cancer.var = cancer.var.merge(gene_pos, on="gene_name", how="left")# Merge
+cancer.var = cancer.var.set_index("gene_name")# Set index back to gene names
+
+## check
+print(cancer.var[['chromosome', 'start', 'end']].head())
+cancer.obs["treatment"] = cancer.obs["patient"].map({
+    "OAC26": "Naive",
+    "OAC35": "CRT"
+})
+# Step 1: Get full gene annotation from raw.var
+raw_var = cancer.raw.var.reset_index().rename(columns={"GENE": "gene_name"})
+
+# Step 2: Merge genomic coordinates with full gene list
+raw_var = raw_var.merge(gene_pos, on="gene_name", how="left").set_index("gene_name")
+
+# Step 3: Build new AnnData object with correct dimensions and annotations
+raw_adata = sc.AnnData(
+    X=cancer.raw.X.copy(),
+    obs=cancer.obs.copy(),
+    var=raw_var
+)
+
+cnv.tl.infercnv(
+    raw_adata,
+    reference_key="treatment",
+    reference_cat=[
+        "Naive",
+        'CRT'
+    ],
+    window_size=250,
+)
+
+cnv.pl.chromosome_heatmap(raw_adata, groupby="treatment")
 
 
 
 
+####################################################################################################
+
+#### look at cell proportion differeces
+# make treatment column
+OAC_pt.obs["treatment"] = OAC_pt.obs["sample"].map({
+    "OAC26T1": "Naive",
+    "OAC26T2": "Naive",
+    "OAC26T3": "Naive",
+    "OAC26rT1": "Naive",
+    "OAC26rT2": "Naive",
+    "OAC26rT3": "Naive",
+    "OAC35TJ": "CRT",
+    "OAC35TL": "CRT",
+})
 
 
 
+# Count number of cells per treatment per cell type
+counts = OAC_pt.obs.groupby(["treatment", "cell_type"]).size().unstack(fill_value=0)
+
+# Filter for only specific cell types in the count table
+cell_types_of_interest = ["B cells", "T cells", "Myeloid cells", "NK cells", "Plasma cells", "Mast cells"]  # change as needed
+counts = counts.loc[:, counts.columns.isin(cell_types_of_interest)]
+# Convert to proportions (row-wise)
+proportions = counts.div(counts.sum(axis=1), axis=0)
+
+print(proportions)
+
+# Flatten proportions for plotting
+prop_df = proportions.reset_index().melt(id_vars="treatment", var_name="cell_type", value_name="proportion")
+
+plt.figure(figsize=(10, 6))
+sns.barplot(data=prop_df, x="cell_type", y="proportion", hue="treatment")
+plt.xticks(rotation=45)
+plt.title("Cell type proportion by treatment")
+plt.tight_layout()
+plt.show()
+print(OAC_pt.obs["treatment"].value_counts())
+
+### stacked barplot 
+# run all together at once
+proportions.plot(
+    kind="bar",
+    stacked=True,
+    figsize=(8, 6),
+    colormap="tab20"  # or use your preferred colormap
+)
+plt.ylabel("Proportion")
+plt.xlabel("Treatment")
+plt.title("Stacked Cell Type Proportions by Treatment")
+plt.legend(title="Cell Type", bbox_to_anchor=(1.05, 1), loc='upper left')
+plt.tight_layout()
+plt.show()
+
+####################################################################################################
+### UMAP by patient 
+
+# Subset where sample == "OAC26_M"
+naive = OAC_pt[OAC_pt.obs["patient"] == "OAC26"].copy()
+
+# Subset where sample == "OAC35_M"
+CRT = OAC_pt[OAC_pt.obs["patient"] == "OAC35"].copy()
+
+### plot UMAP for each patients LN
+
+sc.pl.umap(naive, color=["cell_type"], size=20)
+sc.pl.umap(CRT, color=["cell_type"], size=20)
+
+
+
+
+OAC_pt.write("/home/itrg/University/RPC/sc_data/OAC_pt_mod.h5ad")
 
 
 
