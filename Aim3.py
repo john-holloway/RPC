@@ -112,6 +112,13 @@ sns.scatterplot(
     legend=False
 )
 
+sig_mask = (df['pvals_adj'] < 0.05) & (df['logfoldchanges'].abs() > 1)
+# Add gene labels for significant genes
+for i, row in df[sig_mask].iterrows():
+    plt.text(row['logfoldchanges'], row['-log10(padj)'], row['names'], 
+             fontsize=8, ha='right', va='bottom')
+
+
 # Add axis labels and title
 plt.xlabel('Log2 Fold Change')
 plt.ylabel('-Log10 Adjusted p-value')

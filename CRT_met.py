@@ -191,8 +191,41 @@ CRT = OAC_met[OAC_met.obs["sample"] == "OAC35_M"].copy()
 sc.pl.umap(naive, color=["cell_type"], size=20)
 sc.pl.umap(CRT, color=["cell_type"], size=20)
 
+### extract the count matices for corr plot
+# Extract normalized expression matrix from adata.X
+matrix_naive = naive.X  # This is cells x genes
 
+# Convert to dense if it's a sparse matrix
+if not isinstance(matrix_naive, np.ndarray):
+    matrix_naive = matrix_naive.toarray()
 
+# Create a DataFrame: genes x cells
+df = pd.DataFrame(matrix_naive.T, index=naive.var_names, columns=naive.obs_names)
+
+# Save to CSV (or TSV)
+df.to_csv("/home/itrg/University/RPC/sc_analysis/Update/Aim 2/matrix_naive.csv")
+
+# CRT
+matrix_CRT = CRT.X
+if not isinstance(matrix_CRT, np.ndarray):
+    matrix_CRT = matrix_CRT.toarray()
+df=pd.DataFrame(matrix_CRT.T, index=CRT.var_names, columns=CRT.obs_names)
+df.to_csv("/home/itrg/University/RPC/sc_analysis/Update/Aim 2/matrix_CRT.csv")
+
+# extracting the variable genes list 
+# Step 1: Identify highly variable genes
+# Step 2: Sort all genes by variability (descending)
+hv_df = CRT.var.copy()
+hv_df_sorted = hv_df.sort_values(by='dispersions_norm', ascending=False)
+
+# Step 3: Get list of top variable gene names
+top_variable_genes = hv_df_sorted.index.tolist()
+
+# Convert list to a DataFrame
+df_genes = pd.DataFrame(top_variable_genes, columns=["gene"])
+
+# Save to CSV (or .txt)
+df_genes.to_csv("/home/itrg/University/RPC/sc_analysis/Update/Aim 2/CRT_variable_genes.csv", index=False)
 
 ### cellphone db 
 ### naive 
