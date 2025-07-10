@@ -209,8 +209,6 @@ sc.pl.violin(
 sc.pl.scatter(OAC_ua, "total_counts", "n_genes_by_counts", color="pct_counts_mt")
 
 # save the anndata obj:
-# Save the AnnData object (optional)
 OAC_mets.write("C:/Users/jh9u24/OneDrive - University of Southampton/University/MRes/RPC/OAC_sc_data/OAC_1600_cores/OAC_mets.h5ad")
 OAC_ua.write("C:/Users/jh9u24/OneDrive - University of Southampton/University/MRes/RPC/OAC_sc_data/OAC_1600_cores/OAC_ua.h5ad")
-
 

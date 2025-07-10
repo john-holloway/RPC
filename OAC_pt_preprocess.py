@@ -254,6 +254,5 @@ sc.pl.violin(
 sc.pl.scatter(OAC_pt, "total_counts", "n_genes_by_counts", color="pct_counts_mt")
 
 # save the anndata obj:
-# Save the AnnData object (optional)
 OAC_pt.write("C:/Users/jh9u24/OneDrive - University of Southampton/University/MRes/RPC/OAC_sc_data/Primary Tumour/OAC_pt.h5ad")
 
