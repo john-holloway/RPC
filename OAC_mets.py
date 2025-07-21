@@ -118,6 +118,10 @@ marker_genes = {"B cell": ["CD79A", "MS4A1", "CD19"], "NK cell": ["NCAM1", "NKG7
 "Macrophage": ["C1QA", "CD68", "MS4A7"], "Mast cell": ["TPSAB1", "TPSB2", "CPA3"], "Cancer Associated Fibroblast": ["FAP", "ACTA2", "PDPN"], "Endothelial cell": ["PECAM1", "VWF"],
 "Fibroblast": ["COL1A1", "DCN", "PDGFRA"], "Pericyte": ["PDGFRB", "RGS5"], "Smooth muscle cells": ["ACTA2", "MYH11", "TAGLN"], "Fibroblast reticular cell": ["PDPN", "CCL21"],
 "Follicular dendritic cell": ["CR2", "FCER2", "CR1"], "Plasma cell": ["SDC1", "CD38", "MZB1"], "Cancer cell": ["EPCAM", "TGM2"]}
+condensed_marker = {"B cell": ["MS4A1"], "NK cell": ["NCAM1"], "T cell": ["CD3D"], "Myeloid": ["ITGAX"],
+"Mast cell": ["TPSAB1"], "Fibroblast": ["DCN"], "Endothelial cell": ["PECAM1"],
+"Pericyte": ["PDGFRB"], "Smooth muscle cells": ["TAGLN"], "Follicular dendritic cell": ["CR2"], "Plasma cell": ["MZB1"], "Cancer cell": ["EPCAM"]}
+
 # subset to only the markers found in the data
 marker_genes_in_data = {}
 for ct, markers in marker_genes.items():
@@ -129,13 +133,17 @@ for ct, markers in marker_genes.items():
 
 
 marker_genes_II = ["MS4A1", "GNLY", "CD3D", "FCN1", "CD1C", "C1QA", "TPSAB1", "FAP", "PECAM1", "COL1A1", "PDGFRB", "ACTA2", "PDPN", "CR2", "SDC1", "EPCAM", "TGM2"]
-sc.pl.umap(OAC_met, color=marker_genes_II, use_raw=True)
+condensed_marker_II = ["MS4A1", "NCAM1", "CD3D", "ITGAX", "TPSAB1", "DCN", "PECAM1", 
+                        "PDGFRB","TAGLN", "CR2", "MZB1", "EPCAM"]
+
+# plt.rcParams['axes.titlesize'] = 20  # Set default title font size
+sc.pl.umap(OAC_met, color=condensed_marker_II, use_raw=True)
 
 # Dot plot table
 sc.pl.dotplot(
     OAC_met,
     groupby="leiden",
-    var_names=marker_genes,
+    var_names=condensed_marker,
     standard_scale="var",  # standard scale: normalize each gene to range from 0 to 1
     use_raw=True
 )
@@ -169,10 +177,10 @@ sc.pl.violin(OAC_met, marker_genes_II, groupby='leiden')
 
 # Differentially expressed genes in each cluster
 sc.tl.rank_genes_groups(
-    OAC_met, groupby="leiden", method="wilcoxon", key_added="dea_leiden"
+    OAC_met, groupby="cell_type", method="wilcoxon", key_added="dea_cell_type"
 )
 # Get the result dictionary
-result = OAC_met.uns['dea_leiden']
+result = OAC_met.uns['dea_cell_type']
 
 # 'names' contains the ranked gene names per cluster
 groups = result['names'].dtype.names  # cluster names
@@ -245,39 +253,16 @@ cnv.tl.infercnv(
     ],
     window_size=250,
 )
+subset_adata = raw_adata[raw_adata.obs["cell_type"].isin(["T cells", "Cancer cells"])].copy()
 
+# Plot the heatmap for just those cells
+cnv.pl.chromosome_heatmap(subset_adata, groupby="cell_type")
 cnv.pl.chromosome_heatmap(raw_adata, groupby="cell_type")
 
 print(OAC_met.var.columns)  # After reset_index and rename
 print(gene_pos.columns)     # The GTF-derived gene position DataFrame
 print(OAC_met.var.reset_index().columns)
 
-### make corr plot 
-# Extract expression matrix (cells x genes)
-expr = OAC_met.X.T  # transpose to genes x cells
-
-# Compute Spearman correlation (genes x genes)
-corr, _ = spearmanr(expr, axis=1)
-corr_df = pd.DataFrame(corr, index=OAC_met.var_names, columns=OAC_met.var_names)
-
-# Compute linkage
-linkage = sch.linkage(1 - corr_df, method='average')  # 1 - corr to convert to distance
-# Cut dendrogram to get clusters — you can choose number of clusters (e.g. 10)
-clusters = sch.fcluster(linkage, t=10, criterion='maxclust')
-# Map gene to cluster
-gene_clusters = pd.Series(clusters, index=corr_df.index)
-
-# Assuming corr_df is your gene-gene correlation DataFrame
-sns.clustermap(
-    corr_df,
-    method='average',        # linkage method
-    metric='correlation',    # distance metric
-    cmap='vlag',             # diverging colormap for correlations
-    figsize=(10, 10),
-    yticklabels=False,
-    xticklabels=False
-)
-plt.show()
 
 ###############################################################################################################################
 
@@ -312,7 +297,7 @@ cancer_marker_genes_II = ["EPCAM", "CDH1", "SNAI1", "SNAI2", "ZEB1", "ZEB2", "TW
 sc.pl.umap(cancer, color=cancer_marker_genes_II, use_raw=True)
 cancer_activity_markers = ["MKI67", "MCM2", "PCNA"]
 sc.pl.umap(cancer, color=cancer_activity_markers, use_raw=True)
-sc.pl.umap(cancer, color=["EPCAM", "CDH1"], use_raw=True)
+sc.pl.umap(cancer, color=["EPCAM", "CDH1", "AGR2", "PTEN", "CD276"], use_raw=True)
 
 cluster_to_celltype_cancer = {
     '0': 'CRT cells',
@@ -326,7 +311,30 @@ cluster_to_celltype_cancer = {
 
 # Create the new column
 cancer.obs['cell_type'] = cancer.obs['leiden'].map(cluster_to_celltype_cancer)
+
+celltype_to_treatment_cancer = {
+    'CRT cells': 'CRT',
+    'Naive cells': "Naive",
+    
+}
+cancer.obs['Treatment'] = cancer.obs['cell_type'].map(celltype_to_treatment_cancer)
+
 sc.pl.umap(cancer, color=["cell_type"])
+vln_genes = [#"EPCAM", "CDH1",
+             #"KRAS", "EGFR", 
+             "IFI27", "AGR2", "CD24"
+             ]
+
+with plt.rc_context({'font.size': 16}):  # <-- Set font size here
+    sc.pl.violin(
+        cancer,
+        vln_genes,
+        groupby='Treatment',
+        multi_panel=True
+    )
+
+
+
 
 
 # Differentially expressed genes in each cluster
@@ -354,13 +362,14 @@ sc.pl.rank_genes_groups_dotplot(
 ### diff gene expression between mesenchymal and epithelial
 sc.tl.rank_genes_groups(
     cancer,
-    groupby='cell_type',  # <-- your custom column
-    groups=['CRT cells'],
-    reference='Naive cells',
+    groupby='Treatment',  # <-- your custom column
+    groups=['CRT'],
+    reference='Naive',
     method='wilcoxon'
 )
+print(cancer.obs['Treatment'].unique())  # What group names you actually used
 
-df = sc.get.rank_genes_groups_df(cancer, group='CRT cells')
+df = sc.get.rank_genes_groups_df(cancer, group='CRT')
 # Save to CSV
 df.to_csv('/home/itrg/University/RPC/sc_analysis/OAC_mets/dge_CRT_vs_naive.csv', index=False)
 
@@ -412,8 +421,11 @@ enr = gp.enrichr(
     outdir='KEGG_results',  # folder to save results
     cutoff=0.05  # p-value threshold
 )
+enr.res2d = enr.res2d[~enr.res2d['Term'].str.contains("Mouse", case=False)].copy()
+enr.res2d['Term'] = enr.res2d['Term'].str.split().str[0]
+
 # Barplot
-gp.barplot(enr.res2d, title='KEGG Pathway Enrichment', cutoff=0.05, figsize=(6, 6))
+gp.barplot(enr.res2d, title='ChEA Enrichment', cutoff=0.05, figsize=(6, 6))
 
 ### inferCNV on the cancer group
 # We provide all immune cell types as "normal cells".
@@ -443,12 +455,15 @@ gene_pos = gene_pos.rename(columns={"seqname": "chromosome"})
 gene_pos = gene_pos.drop_duplicates(subset="gene_name")# Drop any duplicates
 
 ## merge with cancer.var
-cancer.var = cancer.var.rename(columns={"GENE": "gene_name"})# Reset index to access gene names as a column
+# 1. Reset index to bring gene names into a column
+## merge with cancer.var
+cancer.var = cancer.var.reset_index().rename(columns={"GENE": "gene_name"})  # 
 cancer.var = cancer.var.merge(gene_pos, on="gene_name", how="left")# Merge
 cancer.var = cancer.var.set_index("gene_name")# Set index back to gene names
 
 ## check
 print(cancer.var[['chromosome', 'start', 'end']].head())
+print(cancer.var.columns)
 
 # Step 1: Get full gene annotation from raw.var
 raw_var = cancer.raw.var.reset_index().rename(columns={"GENE": "gene_name"})
@@ -463,15 +478,11 @@ raw_adata = sc.AnnData(
     var=raw_var)
 
 
-# make treatment column
-cancer.obs["treatment"] = cancer.obs["sample"].map({
-    "OAC26_M": "Naive",
-    "OAC35_M": "CRT"
-})
+
 
 cnv.tl.infercnv(
     raw_adata,
-    reference_key="treatment",
+    reference_key="Treatment",
     reference_cat=[
         "Naive",
         "CRT",
@@ -479,7 +490,8 @@ cnv.tl.infercnv(
     window_size=250,
 )
 
-cnv.pl.chromosome_heatmap(cancer, groupby="treatment")
+with plt.rc_context({'font.size': 18}):  # <-- Set font size here
+    cnv.pl.chromosome_heatmap(raw_adata, groupby="Treatment")
 
 
 ###############################################################################################################################

@@ -26,7 +26,6 @@ OAC_CRT.obs["location"] = OAC_CRT.obs["sample"].map({
 
 print(OAC_CRT.obs.columns)
 
-
 # Count number of cells per treatment per cell type
 counts = OAC_CRT.obs.groupby(["location", "cell_type"]).size().unstack(fill_value=0)
 # Filter for only specific cell types in the count table
@@ -72,7 +71,7 @@ plt.show()
 # 'Myeloid cells', 'Endothelial cells', 'NK cells', 'Mast cells', 'Stromal cells'
 OAC_CRT.obs["cell_type"] = OAC_CRT.obs["cell_type"].replace("Fibroblasts", "Stromal cells")
 
-cell_type_of_interest = "Stromal cells"
+cell_type_of_interest = "Myeloid cells"
 test_cells = OAC_CRT[OAC_CRT.obs['cell_type'] == cell_type_of_interest].copy()
 
 sc.tl.rank_genes_groups(
@@ -85,7 +84,7 @@ sc.tl.rank_genes_groups(
 
 df = sc.get.rank_genes_groups_df(test_cells, group='Lymph Node')
 # Save to CSV
-df.to_csv('/home/itrg/University/RPC/sc_analysis/OAC_mets/dge_CRT_vs_naive.csv', index=False)
+#df.to_csv('/home/itrg/University/RPC/sc_analysis/OAC_mets/dge_CRT_vs_naive.csv', index=False)
 
 # Filter for upregulated genes
 up_genes_df = df[(df['logfoldchanges'] > 1) & (df['pvals_adj'] < 0.05)]

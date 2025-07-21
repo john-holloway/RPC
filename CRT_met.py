@@ -145,6 +145,10 @@ OAC_met.obs["treatment"] = OAC_met.obs["sample"].map({
 # Count number of cells per treatment per cell type
 counts = OAC_met.obs.groupby(["treatment", "cell_type"]).size().unstack(fill_value=0)
 
+cell_types_of_interest = ["B cells", "T cells", "Myeloid cells", "Plasma cells", "Mast cells"]  # change as needed
+counts = counts.loc[:, counts.columns.isin(cell_types_of_interest)]
+
+
 # Convert to proportions (row-wise)
 proportions = counts.div(counts.sum(axis=1), axis=0)
 
@@ -385,83 +389,6 @@ kpy.plot_cpdb_chord(
     legend_kwargs={"loc": "center", "bbox_to_anchor": (1, 1), "fontsize": 8},
     link_offset=1,
 )
-
-##################################################################################################################################
-####################################### Correlation plots ########################################################################
-
-
-### make corr plot 
-# make new anndata objects
-CRT_corr = CRT.copy()
-# subset to top 500 genes 
-sc.pp.highly_variable_genes(CRT_corr, n_top_genes=hvgs, batch_key="sample")
-# Extract expression matrix (cells x genes)
-expr = CRT_corr.X.T  # transpose to genes x cells
-
-# Compute Spearman correlation (genes x genes)
-corr, _ = spearmanr(expr, axis=1)
-corr_df = pd.DataFrame(corr, index=CRT_corr.var_names, columns=CRT_corr.var_names)
-
-# Compute linkage
-linkage = sch.linkage(1 - corr_df, method='average')  # 1 - corr to convert to distance
-# Cut dendrogram to get clusters — you can choose number of clusters (e.g. 10)
-clusters = sch.fcluster(linkage, t=10, criterion='maxclust')
-# Map gene to cluster
-gene_clusters = pd.Series(clusters, index=corr_df.index)
-
-# Assuming corr_df is your gene-gene correlation DataFrame
-sns.clustermap(
-    corr_df,
-    row_linkage=linkage,
-    col_linkage=linkage,
-    cmap='vlag',
-    xticklabels=False,
-    yticklabels=False,
-    figsize=(10, 10)
-)
-plt.show()
-
-
-###############
-
-# Transpose expression to get genes x cells
-expr = CRT_corr.X.T
-genes = CRT_corr.var_names
-
-# Ensure dense matrix
-if hasattr(expr, "toarray"):
-    expr = expr.toarray()
-
-# Remove genes with zero variance
-gene_var = np.var(expr, axis=1)
-nonzero_idx = gene_var > 0
-expr = expr[nonzero_idx]
-genes = genes[nonzero_idx]
-
-# Compute Spearman correlation (genes x genes)
-corr_matrix, _ = spearmanr(expr, axis=1)
-corr_df = pd.DataFrame(corr_matrix, index=genes, columns=genes)
-
-# Convert to distance matrix
-dist_matrix = 1 - corr_df
-
-# Remove NaNs (caused by undefined Spearman values)
-mask = ~np.isnan(dist_matrix).any(axis=0)
-dist_matrix = dist_matrix.loc[mask, mask]
-
-# Symmetrize and convert to condensed format
-dist_matrix = (dist_matrix + dist_matrix.T) / 2
-condensed = squareform(dist_matrix.values)
-
-# Hierarchical clustering
-link = linkage(condensed, method="average")
-
-# Cut dendrogram into clusters
-clusters = fcluster(link, t=10, criterion='maxclust')
-
-# Map genes to clusters
-gene_clusters = pd.Series(clusters, index=dist_matrix.index)
-
 
 
 

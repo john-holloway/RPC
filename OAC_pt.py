@@ -248,6 +248,14 @@ sc.pl.umap(cancer, color=['leiden'])
 sc.pl.umap(cancer, color=['sample'])
 sc.pl.umap(cancer, color=['patient'])
 
+patient_to_treatment_cancer = {
+    'OAC26': 'Naive',
+    'OAC35': "CRT",
+    
+}
+cancer.obs['Treatment'] = cancer.obs['patient'].map(patient_to_treatment_cancer)
+
+sc.pl.umap(cancer, color=["Treatment"])
 
 ### Cancer Subset cell annotation 
 EMT_marker_genes = {"Epithelial cell": ["EPCAM", "CDH1"], "EMT TF": ["SNAI1", "SNAI2", "ZEB1", "ZEB2", "TWIST1", "TWIST2"], "Mesenchymal cell": ["VIM", "FN1", "CDH2", "MMP1", "SMN1", ], "EMT-Inducing factors": ["TGFB1", "EGF", "CTNNB1", "NOTCH1", "MYC"] }

@@ -42,10 +42,10 @@ def create_anndata(sample_dict):
 
 # set params
 sample_paths = {
-    "OAC26_M": "C:/Users/jh9u24/OneDrive - University of Southampton/University/MRes/RPC/OAC_sc_data/OAC_1600_cores/OAC26rLN/OAC26rLN.dge.txt",
-    "OAC35_M": "C:/Users/jh9u24/OneDrive - University of Southampton/University/MRes/RPC/OAC_sc_data/OAC_1600_cores/OAC35/OAC35.dge.txt",
-    "OAC20_U": "C:/Users/jh9u24/OneDrive - University of Southampton/University/MRes/RPC/OAC_sc_data/OAC_1600_cores/OAC20_2210/OAC20_2210.dge.txt",
-    "OAC36_U": "C:/Users/jh9u24/OneDrive - University of Southampton/University/MRes/RPC/OAC_sc_data/OAC_1600_cores/OAC36/OAC36.dge.txt",
+    "OAC26_M": "/home/itrg/UnderwoodDropSeqData/DropSeqv3.0pipeline/DGE/OAC26rLN/out_gene_exon_tagged.dge.summary.txt",
+    "OAC35_M": "/home/itrg/UnderwoodDropSeqData/DropSeqv3.0pipeline/DGE/OAC35/out_gene_exon_tagged.dge.summary.txt",
+    "OAC20_U": "/home/itrg/UnderwoodDropSeqData/DropSeqv3.0pipeline/DGE/OAC20_2210/out_gene_exon_tagged.dge.summary.txt",
+    "OAC36_U": "/home/itrg/UnderwoodDropSeqData/DropSeqv3.0pipeline/DGE/OAC36/out_gene_exon_tagged.dge.summary.txt",
 }
 
 # run function 
