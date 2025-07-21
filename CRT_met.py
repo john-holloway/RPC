@@ -371,10 +371,14 @@ kpy.plot_cpdb_chord(
     deconvoluted=decon_crt,
     celltype_key="cell_type",
     link_kwargs={"direction": 1, "allow_twist": True, "r1": 95, "r2": 90},
+    legend_kwargs={
+    "loc": "upper left",        # anchor legend's top-left corner
+    "bbox_to_anchor": (0.85, 1.05),  # move it left and down
+    "fontsize": 8},
     sector_text_kwargs={"color": "black", "size": 12, "r": 105, "adjust_rotation": True},
-    legend_kwargs={"loc": "center", "bbox_to_anchor": (1, 1), "fontsize": 8},
     link_offset=1,
 )
+
 
 kpy.plot_cpdb_chord(
     adata=naive,
